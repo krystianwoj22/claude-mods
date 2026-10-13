@@ -1,0 +1,9 @@
+{
+  "name": "studio",
+  "version": "0.2.0",
+  "description": "Creator HUD above the prompt: live usage bars, a REC mode that masks secrets on screen, and an Explain pane that recaps the last turn.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "DFA Course Academy"
+  }
+}

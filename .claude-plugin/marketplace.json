@@ -1,0 +1,17 @@
+{
+  "name": "krystian-mods",
+  "description": "Claude Code mods by DFA Course Academy: a creator HUD with REC mode and an Explain pane, plus a token and cost meter.",
+  "owner": {
+    "name": "Krystian Wojtarowicz"
+  },
+  "plugins": [
+    {
+      "name": "token-meter",
+      "source": "./token-meter"
+    },
+    {
+      "name": "studio",
+      "source": "./studio"
+    }
+  ]
+}

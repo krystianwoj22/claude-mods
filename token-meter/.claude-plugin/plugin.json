@@ -1,0 +1,9 @@
+{
+  "name": "token-meter",
+  "version": "0.1.0",
+  "description": "Shows tokens and estimated API cost of the last prompt and the whole session in the status line; /token-cost prints the breakdown.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "DFA Course Academy"
+  }
+}
