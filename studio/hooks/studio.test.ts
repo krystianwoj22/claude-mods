@@ -76,3 +76,20 @@ test('HUD keeps its controls when the band is narrow and short', async ($, on) =
     await ui.unmount()
   }
 })
+
+test('HUD minimizes to one row and expands again', async ($, on) => {
+  mock.store(on)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'studio', surface, ...BAND })
+    expect((await ui.find({ key: 'collapse' }))?.props.label).toBe('▾ Minimize')
+    await ui.press({ key: 'collapse' })
+    expect((await ui.find({ key: 'collapse' }))?.props.label).toBe('▸ Expand')
+    expect(await ui.find({ key: 'rec' })).toBeDefined()
+    expect(await ui.find({ key: 'explain' })).toBeDefined()
+    expect(await ui.find({ text: 'LAST TURN   ' })).toBeUndefined()
+    await ui.press({ key: 'collapse' })
+    expect((await ui.find({ key: 'collapse' }))?.props.label).toBe('▾ Minimize')
+    expect(await ui.find({ text: 'LAST TURN   ' })).toBeDefined()
+    await ui.unmount()
+  }
+})

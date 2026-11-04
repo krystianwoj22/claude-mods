@@ -18,11 +18,13 @@ const view = atom({ plugin: 'studio', key: 'view' } as const, -1)
 const busy = atom({ plugin: 'studio', key: 'busy' } as const, false)
 const error = atom({ plugin: 'studio', key: 'error' } as const, '')
 const termsLearned = atom({ plugin: 'studio', key: 'termsLearned' } as const, 0)
+const collapsed = atom({ plugin: 'studio', key: 'collapsed' } as const, false)
 
 const PANE = 'studio-explain'
 const STORE_REC = 'studio.rec'
 const STORE_WORDS = 'studio.recWords'
 const STORE_TERMS = 'studio.terms'
+const STORE_COLLAPSED = 'studio.collapsed'
 
 // ── formatting ────────────────────────────────────────────────────────────
 
@@ -264,6 +266,12 @@ const setRec = async ($: EngineInterface, on: boolean) => {
   $.ui.toast(on ? '● REC on — secrets, emails and paths are masked on screen' : 'REC off')
 }
 
+// Remembered in the store, so a minimized HUD stays minimized in every session.
+const setCollapsed = async ($: EngineInterface, on: boolean) => {
+  await update($, collapsed, () => on)
+  await $.store.set(STORE_COLLAPSED, on)
+}
+
 // ── hooks ─────────────────────────────────────────────────────────────────
 
 export const register: Register = on => {
@@ -273,6 +281,9 @@ export const register: Register = on => {
     const r = await next(e)
     await $.command.register({ name: 'rec', description: 'Toggle REC mode (mask secrets on screen). /rec hide <text> · /rec show <text> · /rec list' })
     await $.command.register({ name: 'explain', description: 'Recap the last turn in the Explain pane' })
+    await $.command.register({ name: 'hud', description: 'Minimize or expand the studio HUD. /hud min · /hud max' })
+    const storedCollapsed = (await $.store.get(STORE_COLLAPSED)) === true
+    await update($, collapsed, () => storedCollapsed)
     const storedRec = (await $.store.get(STORE_REC)) === true
     const words = ((await $.store.get(STORE_WORDS)) as string[] | undefined) ?? []
     const terms = ((await $.store.get(STORE_TERMS)) as string[] | undefined) ?? []
@@ -368,6 +379,13 @@ export const register: Register = on => {
     return { text: err || 'Recap ready in the Explain pane.' }
   })
 
+  on('command.run', { command: 'hud' }, async ($, e) => {
+    const verb = e.args.trim().toLowerCase()
+    const target = verb === 'min' ? true : verb === 'max' ? false : !(await read($, collapsed))
+    await setCollapsed($, target)
+    return { text: target ? 'HUD minimized.' : 'HUD expanded.' }
+  })
+
   on('command.run', { command: 'rec' }, async ($, e) => {
     const [verb, ...rest] = e.args.trim().split(/\s+/)
     const word = rest.join(' ').trim()
@@ -441,11 +459,60 @@ export const register: Register = on => {
     const proj = await read($, project)
     const br = await read($, branch)
     const trend = await read($, ctxTrend)
+    const isCollapsed = await read($, collapsed)
 
     const five = u?.limits.find(l => l.kind === 'five_hour')
     const week = u?.limits.find(l => l.kind === 'seven_day')
     const spend = u?.limits.find(l => l.kind === 'spend_limit')
     const resetIn = (l: Limit) => (l.resetsAt ? `resets in ${short(Date.parse(l.resetsAt) - t)}` : '')
+
+    const buttons = (
+      <Box flexDirection="row" gap={1}>
+        <Button
+          key="rec"
+          hotkey="r"
+          label={isRec ? '● REC' : '○ REC'}
+          variant={isRec ? 'primary' : 'secondary'}
+          onPress={() => setRec($, !isRec)}
+        />
+        <Button key="explain" hotkey="e" label="✦ Explain" onPress={() => explainLatest($)} />
+        <Button
+          key="collapse"
+          hotkey="m"
+          label={isCollapsed ? '▸ Expand' : '▾ Minimize'}
+          onPress={() => setCollapsed($, !isCollapsed)}
+        />
+      </Box>
+    )
+
+    // Minimized: one row with the numbers only, no bars, cards or last-turn line.
+    if (isCollapsed) {
+      const pct = (label: string, p: number | null | undefined) =>
+        p == null ? null : (
+          <Text key={label} color={p >= 50 ? heat(clampPct(p)) : undefined}>
+            <Text dimColor>{`${label} `}</Text>
+            {`${Math.round(clampPct(p))}%`}
+          </Text>
+        )
+      const facts = [
+        pct('CTX', u?.ctxPercent),
+        pct('5H', five?.percent),
+        pct('WEEK', week?.percent),
+        pct('SPEND', spend?.percent),
+        u?.usd != null ? <Text key="usd">{money(u.usd)}</Text> : null,
+      ].filter(Boolean)
+      return (
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingX={1}>
+          <Box flexDirection="row" gap={2} flexShrink={1}>
+            <Text bold wrap="truncate-end">
+              {proj || 'Session'}
+            </Text>
+            {facts}
+          </Box>
+          {buttons}
+        </Box>
+      )
+    }
 
     // Layout: a header, one card per metric sharing the width, a footer for the last turn.
     const GAP = 3
@@ -533,16 +600,7 @@ export const register: Register = on => {
               </Text>
             ) : null}
           </Box>
-          <Box flexDirection="row" gap={1}>
-            <Button
-              key="rec"
-              hotkey="r"
-              label={isRec ? '● REC' : '○ REC'}
-              variant={isRec ? 'primary' : 'secondary'}
-              onPress={() => setRec($, !isRec)}
-            />
-            <Button key="explain" hotkey="e" label="✦ Explain" onPress={() => explainLatest($)} />
-          </Box>
+          {buttons}
         </Box>
 
         <Box flexDirection="row" flexWrap="wrap" columnGap={GAP} rowGap={air} marginTop={air}>

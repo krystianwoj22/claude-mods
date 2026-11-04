@@ -41,6 +41,7 @@ A mod installed at the user scope also loads in the Code tab of the Claude deskt
 | `R` / **REC** button / `/rec` | Toggle REC mode: secrets, API keys, emails and file paths are masked on screen |
 | `/rec hide <text>` · `/rec show <text>` · `/rec list` | Add, remove or list your own words to mask |
 | `E` / **Explain** button / `/explain` | Recap the last turn in the Explain pane |
+| `M` / **Minimize** button / `/hud` | Shrink the HUD to one row of numbers, or expand it again. Remembered across sessions. `/hud min` · `/hud max` |
 
 REC mode masks what is drawn on screen. It is a recording aid, not a security boundary: always check your recording before publishing.
 

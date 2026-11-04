@@ -56,6 +56,7 @@ declare module 'claude-code' {
       busy: boolean
       error: string
       termsLearned: number
+      collapsed: boolean
     }
   }
 }
