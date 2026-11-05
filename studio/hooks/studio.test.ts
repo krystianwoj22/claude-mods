@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { ESSENTIALS, displayName, draftWith, groupOf, labelIn, nameOfKey, regroupOwn, sortGroups } from './commands'
+import { ESSENTIALS, ESSENTIAL_GROUPS, ESSENTIAL_OPEN, displayName, draftWith, groupOf, labelIn, nameOfKey, regroupOwn, sortGroups } from './commands'
 import { redactDeep, redactText } from './redact'
 
 describe('REC masking', () => {
@@ -146,8 +146,10 @@ describe('Commands helpers', () => {
   test('the essentials stay a short, unique list', async () => {
     const cmds = ESSENTIALS.filter(x => x.cmd).map(x => x.cmd)
     expect(new Set(cmds).size).toBe(cmds.length)
-    expect(ESSENTIALS.length <= 22).toBe(true)
+    expect(ESSENTIALS.length <= 40).toBe(true)
     expect(ESSENTIALS.every(x => x.text.length <= 46)).toBe(true)
+    expect(ESSENTIALS.every(x => (ESSENTIAL_GROUPS as readonly string[]).includes(x.group))).toBe(true)
+    expect(ESSENTIAL_OPEN.every(g => (ESSENTIAL_GROUPS as readonly string[]).includes(g))).toBe(true)
   })
 })
 
@@ -155,6 +157,8 @@ const LIST = [
   { name: 'clear', description: 'Clear the conversation', source: 'builtin' },
   { name: 'compact', description: 'Compact the conversation', source: 'builtin' },
   { name: 'model', description: 'Set the model', source: 'builtin' },
+  { name: 'code-review', description: 'Review the diff', source: 'builtin' },
+  { name: 'doctor', description: 'Check the setup', source: 'builtin' },
   { name: 'rec', description: 'Toggle REC mode', source: 'plugin', plugin: 'studio' },
   { name: 'superpowers:brainstorming', description: 'Brainstorm\n before building', source: 'plugin', plugin: 'superpowers' },
   { name: 'yolo', description: 'Run autonomously', source: 'user' },
@@ -201,9 +205,16 @@ test('Commands pane lists essentials and collapsed groups on every surface', asy
     const ui = await $.ui.mount({ ...CMD_PANE, surface })
     expect(await ui.find({ key: 'run|e|clear' })).toBeDefined()
     expect(await ui.find({ key: 'run|e|compact' })).toBeDefined()
-    // listed by the docs, but not by this session: hidden
-    expect(await ui.find({ key: 'run|e|effort' })).toBeUndefined()
-    expect(await ui.find({ type: 'Text', text: /Shift\+Tab/ })).toBeDefined()
+    expect(await ui.find({ key: 'run|e|code-review' })).toBeDefined()
+    expect(await ui.find({ key: 'run|e|doctor' })).toBeDefined()
+    // listed by the docs, but not by this session: hidden, and a group with nothing to show is left out
+    expect(await ui.find({ key: 'run|e|advisor' })).toBeUndefined()
+    expect(await ui.find({ key: 'egrp|Other devices' })).toBeUndefined()
+    // the Keys section is gone
+    expect(await ui.find({ type: 'Text', text: /Shift\+Tab/ })).toBeUndefined()
+    // Model & speed starts closed
+    expect(await ui.find({ key: 'egrp|Model & speed' })).toBeDefined()
+    expect(await ui.find({ key: 'run|e|model' })).toBeUndefined()
     expect(await ui.find({ key: 'grp|Your own' })).toBeDefined()
     expect(await ui.find({ key: 'grp|studio' })).toBeDefined()
     expect(await ui.find({ key: 'run|y|superpowers:brainstorming' })).toBeUndefined()
@@ -271,5 +282,19 @@ test('F stars the row the ring is on, not the Star button', async ($, on) => {
   await ui.press({ key: 'star' })
   expect(saved.get('studio.favorites')).toEqual(['compact'])
   expect((await ui.find({ key: 'star' }))?.props.label).toBe('☆ Unstar')
+  await ui.unmount()
+})
+
+test('Essentials groups open and close, and the choice is remembered', async ($, on) => {
+  const saved = new Map<string, unknown>()
+  engine(on, [], '', saved)
+  await $.command.run(RUN)
+  const ui = await $.ui.mount({ ...CMD_PANE, surface: 'desktop' })
+  expect((await ui.find({ key: 'egrp|Power tools' }))?.props.label).toBe('▾ ⚡ Power tools (2)')
+  await ui.press({ key: 'egrp|Model & speed' })
+  expect(await ui.find({ key: 'run|e|model' })).toBeDefined()
+  await ui.press({ key: 'egrp|Everyday' })
+  expect(await ui.find({ key: 'run|e|clear' })).toBeUndefined()
+  expect(saved.get('studio.essentialsOpen')).toEqual(['Power tools', 'Model & speed'])
   await ui.unmount()
 })

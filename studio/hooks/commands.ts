@@ -3,31 +3,50 @@ import type { CommandEntry, CommandSource } from '../types'
 // ── Commands pane: the data and pure helpers (the hooks live in register.tsx) ──
 
 // The built-ins worth remembering, checked against code.claude.com/docs/en/commands
-// and /interactive-mode (Nov 2026). A command shows only when the session lists it.
-export type Essential = { group: string; cmd?: string; keys?: string; text: string }
+// and /desktop (Nov 2026). A command shows only when the session lists it.
+export type Essential = { group: string; cmd: string; text: string }
+
+export const ESSENTIAL_GROUPS = ['Power tools', 'Everyday', 'Model & speed', 'Setup', 'Other devices'] as const
+
+// Open when the pane first opens; the person's own choice is remembered after that.
+export const ESSENTIAL_OPEN: string[] = ['Power tools', 'Everyday']
 
 export const ESSENTIALS: Essential[] = [
-  { group: 'Session', cmd: 'clear', text: 'Start fresh with an empty context' },
-  { group: 'Session', cmd: 'resume', text: 'Go back to an earlier conversation' },
-  { group: 'Session', cmd: 'rewind', text: 'Undo: roll chat and code back (or Esc Esc)' },
-  { group: 'Session', cmd: 'btw', text: 'Side question that stays out of the chat' },
-  { group: 'Context running out', cmd: 'context', text: 'See what fills your context window' },
-  { group: 'Context running out', cmd: 'compact', text: 'Summarize the chat to free up context' },
-  { group: 'Model & thinking', cmd: 'model', text: 'Switch model (arrows set effort)' },
-  { group: 'Model & thinking', cmd: 'effort', text: 'How hard Claude thinks: low to max' },
-  { group: 'Model & thinking', cmd: 'plan', text: 'Plan first, change nothing until you approve' },
+  { group: 'Power tools', cmd: 'advisor', text: 'A second model advises mid-task (on/off)' },
+  { group: 'Power tools', cmd: 'code-review', text: 'Find bugs in your current changes' },
+  { group: 'Power tools', cmd: 'security-review', text: 'Check your changes for security issues' },
+  { group: 'Power tools', cmd: 'simplify', text: 'Clean up changed code and apply the fixes' },
+  { group: 'Power tools', cmd: 'doctor', text: 'Check your setup and fix what is wrong' },
+  { group: 'Power tools', cmd: 'insights', text: 'Report on your sessions + features to try' },
+  { group: 'Power tools', cmd: 'goal', text: 'Keep working until a condition is met' },
+  { group: 'Power tools', cmd: 'loop', text: 'Repeat a prompt on an interval' },
+  { group: 'Power tools', cmd: 'schedule', text: 'Run Claude on a schedule in the cloud' },
+  { group: 'Everyday', cmd: 'clear', text: 'Start fresh with an empty context' },
+  { group: 'Everyday', cmd: 'compact', text: 'Summarize the chat to free up context' },
+  { group: 'Everyday', cmd: 'context', text: 'See what fills your context window' },
+  { group: 'Everyday', cmd: 'btw', text: 'Side question that stays out of the chat' },
+  { group: 'Everyday', cmd: 'rewind', text: 'Undo: roll chat and code back (or Esc Esc)' },
+  { group: 'Everyday', cmd: 'resume', text: 'Go back to an earlier conversation' },
+  { group: 'Everyday', cmd: 'branch', text: 'Try another direction, keep the original' },
+  { group: 'Everyday', cmd: 'copy', text: 'Copy Claude’s last answer' },
+  { group: 'Everyday', cmd: 'tasks', text: 'See background work and finished agents' },
+  { group: 'Model & speed', cmd: 'model', text: 'Switch model (arrows set effort)' },
+  { group: 'Model & speed', cmd: 'effort', text: 'How hard Claude thinks: low to max' },
+  { group: 'Model & speed', cmd: 'fast', text: 'Turn fast mode on or off' },
+  { group: 'Model & speed', cmd: 'plan', text: 'Plan first, change nothing until you approve' },
+  { group: 'Model & speed', cmd: 'usage', text: 'Session cost and your plan limits' },
   { group: 'Setup', cmd: 'init', text: 'Create a CLAUDE.md guide for this project' },
   { group: 'Setup', cmd: 'memory', text: 'Edit CLAUDE.md files and auto memory' },
+  { group: 'Setup', cmd: 'skills', text: 'List your skills' },
   { group: 'Setup', cmd: 'mcp', text: 'Manage connected MCP servers' },
+  { group: 'Setup', cmd: 'plugin', text: 'Install and manage plugins' },
   { group: 'Setup', cmd: 'reload-plugins', text: 'Load plugin changes without restarting' },
-  { group: 'Review', cmd: 'diff', text: 'Review file changes, Claude’s edits too' },
-  { group: 'Review', cmd: 'code-review', text: 'Find bugs in your current changes' },
-  { group: 'Review', cmd: 'copy', text: 'Copy Claude’s last answer' },
-  { group: 'Keys', keys: 'Shift+Tab', text: 'Switch mode: manual, accept edits, plan, auto' },
-  { group: 'Keys', keys: 'Esc', text: 'Stop Claude mid-answer, work so far is kept' },
-  { group: 'Keys', keys: '!', text: 'Start a line with ! to run a shell command' },
-  { group: 'Keys', keys: '@', text: 'Mention a file so Claude reads it' },
-  { group: 'Keys', keys: 'Ctrl+X Tab', text: 'Jump to the studio bar, then C, E, R or M' },
+  { group: 'Setup', cmd: 'hooks', text: 'See your hook configurations' },
+  { group: 'Setup', cmd: 'statusline', text: 'Set up the status line' },
+  { group: 'Other devices', cmd: 'remote-control', text: 'Reach this session from claude.ai' },
+  { group: 'Other devices', cmd: 'teleport', text: 'Pull a cloud session into this terminal' },
+  { group: 'Other devices', cmd: 'desktop', text: 'Continue this session in the desktop app' },
+  { group: 'Other devices', cmd: 'mobile', text: 'Get the Claude mobile app (QR code)' },
 ]
 
 export const OWN = 'Your own'

@@ -51,6 +51,7 @@ declare module 'claude-code' {
       cmdsListed: boolean
       favs: string[]
       openGroups: string[]
+      essOpen: string[]
       focused: string
       rec: boolean
       recWords: string[]

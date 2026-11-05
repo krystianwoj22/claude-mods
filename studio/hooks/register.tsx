@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement, RenderSurface } from 'claude-code'
 
 import type { CommandEntry, Explanation, Limit, ToolStep, TurnRecord, Usage } from '../types'
-import { ESSENTIALS, NAME_MAX, cut, displayName, draftWith, fit, groupOf, nameOfKey, oneLine, regroupOwn, sortGroups } from './commands'
+import { ESSENTIALS, ESSENTIAL_GROUPS, ESSENTIAL_OPEN, NAME_MAX, cut, displayName, draftWith, groupOf, nameOfKey, oneLine, regroupOwn, sortGroups } from './commands'
 import { redactDeep, redactText } from './redact'
 
 const rec = atom({ plugin: 'studio', key: 'rec' } as const, false)
@@ -24,6 +24,7 @@ const cmds = atom({ plugin: 'studio', key: 'cmds' } as const, [])
 const cmdsListed = atom({ plugin: 'studio', key: 'cmdsListed' } as const, false)
 const favs = atom({ plugin: 'studio', key: 'favs' } as const, [])
 const openGroups = atom({ plugin: 'studio', key: 'openGroups' } as const, [])
+const essOpen = atom({ plugin: 'studio', key: 'essOpen' } as const, ESSENTIAL_OPEN)
 const focused = atom({ plugin: 'studio', key: 'focused' } as const, '')
 
 const PANE = 'studio-explain'
@@ -33,6 +34,7 @@ const STORE_WORDS = 'studio.recWords'
 const STORE_TERMS = 'studio.terms'
 const STORE_COLLAPSED = 'studio.collapsed'
 const STORE_FAVS = 'studio.favorites'
+const STORE_ESS_OPEN = 'studio.essentialsOpen'
 
 // ── formatting ────────────────────────────────────────────────────────────
 
@@ -335,6 +337,16 @@ const toggleFav = async ($: EngineInterface, name: string) => {
 const toggleGroup = ($: EngineInterface, group: string) =>
   update($, openGroups, xs => (xs.includes(group) ? xs.filter(x => x !== group) : [...xs, group]))
 
+// Which Essentials groups are open is remembered across sessions.
+const toggleEssential = async ($: EngineInterface, group: string) => {
+  let next: string[] = []
+  await update($, essOpen, xs => {
+    next = xs.includes(group) ? xs.filter(x => x !== group) : [...xs, group]
+    return next
+  })
+  await $.store.set(STORE_ESS_OPEN, next)
+}
+
 // ── hooks ─────────────────────────────────────────────────────────────────
 
 export const register: Register = on => {
@@ -350,6 +362,8 @@ export const register: Register = on => {
     } catch {}
     const storedFavs = ((await $.store.get(STORE_FAVS)) as unknown[] | undefined) ?? []
     await update($, favs, () => storedFavs.filter((x): x is string => typeof x === 'string'))
+    const storedEss = await $.store.get(STORE_ESS_OPEN)
+    if (Array.isArray(storedEss)) await update($, essOpen, () => storedEss.filter((x): x is string => typeof x === 'string'))
     const storedCollapsed = (await $.store.get(STORE_COLLAPSED)) === true
     await update($, collapsed, () => storedCollapsed)
     const storedRec = (await $.store.get(STORE_REC)) === true
@@ -866,6 +880,7 @@ export const register: Register = on => {
     const isListed = await read($, cmdsListed)
     const fav = await read($, favs)
     const open = await read($, openGroups)
+    const essOpenNow = await read($, essOpen)
     const foc = await read($, focused)
     const cols = e.props.bodyColumns
     const isTerminal = e.surface === 'terminal'
@@ -873,8 +888,8 @@ export const register: Register = on => {
     const byName = new Map(all.map(c => [c.name, c]))
     // Until the session has listed its commands, show the whole sheet.
     const has = (name: string) => !isListed || byName.has(name)
-    const essentials = ESSENTIALS.filter(x => !x.cmd || has(x.cmd))
-    const essentialText = new Map(ESSENTIALS.filter(x => x.cmd).map(x => [x.cmd as string, x.text]))
+    const essentials = ESSENTIALS.filter(x => has(x.cmd))
+    const essentialText = new Map(ESSENTIALS.map(x => [x.cmd, x.text]))
     const favRows = fav.filter(has).map(name => ({ name, text: essentialText.get(name) ?? byName.get(name)?.description ?? '' }))
 
     const own = all.filter(c => c.source !== 'builtin')
@@ -882,7 +897,7 @@ export const register: Register = on => {
     const openLabels = own.filter(c => open.includes(c.group)).map(c => displayName(c.group, c.name))
 
     // One name column for the whole pane; the description takes the rest of the row.
-    const shown = [...favRows.map(r => r.name), ...essentials.map(x => x.cmd ?? x.keys ?? ''), ...openLabels]
+    const shown = [...favRows.map(r => r.name), ...essentials.filter(x => essOpenNow.includes(x.group)).map(x => x.cmd), ...openLabels]
     const nameW = Math.min(NAME_MAX, Math.max(12, ...shown.map(n => n.length + 2)))
     const descW = Math.max(8, cols - nameW - 6)
 
@@ -911,7 +926,7 @@ export const register: Register = on => {
       )
     }
 
-    const essentialGroups = [...new Set(essentials.map(x => x.group))]
+    const essentialGroups = ESSENTIAL_GROUPS.filter(g => essentials.some(x => x.group === g))
     const focusedName = nameOfKey(foc)
 
     return (
@@ -934,25 +949,21 @@ export const register: Register = on => {
         )}
 
         {heading('◆', 'ESSENTIALS', 'suggestion')}
-        {essentialGroups.map(g => (
-          <Box flexDirection="column" marginTop={1}>
-            <Text dimColor bold>
-              {g.toUpperCase()}
-            </Text>
-            {essentials
-              .filter(x => x.group === g)
-              .map(x =>
-                x.cmd ? (
-                  row('e', x.cmd, x.text)
-                ) : (
-                  <Box flexDirection="row">
-                    <Text color="permission">{fit(x.keys ?? '', nameW)}</Text>
-                    <Text dimColor>{cut(x.text, descW)}</Text>
-                  </Box>
-                ),
-              )}
-          </Box>
-        ))}
+        {essentialGroups.map(g => {
+          const items = essentials.filter(x => x.group === g)
+          const isOpen = essOpenNow.includes(g)
+          const icon = g === 'Power tools' ? '⚡ ' : ''
+          return (
+            <Box flexDirection="column">
+              <Button key={`egrp|${g}`} label={`${isOpen ? '▾' : '▸'} ${icon}${g} (${items.length})`} plain onPress={() => void toggleEssential($, g)} />
+              {isOpen ? (
+                <Box flexDirection="column" paddingLeft={2}>
+                  {items.map(x => row('e', x.cmd, x.text))}
+                </Box>
+              ) : null}
+            </Box>
+          )
+        })}
 
         {heading('▸', 'YOUR COMMANDS', 'success', isListed ? `${own.length} from your plugins, skills and MCP` : '')}
         {!isListed ? <Text dimColor>Couldn’t read the commands of this session.</Text> : null}
