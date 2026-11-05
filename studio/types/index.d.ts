@@ -39,9 +39,19 @@ export type Usage = {
   startedAt: number
 }
 
+export type CommandSource = 'builtin' | 'plugin' | 'user' | 'mcp'
+
+// One slash command as the Commands pane lists it; `group` is empty for built-ins.
+export type CommandEntry = { name: string; description: string; source: CommandSource; group: string }
+
 declare module 'claude-code' {
   interface PluginState {
     studio: {
+      cmds: CommandEntry[]
+      cmdsListed: boolean
+      favs: string[]
+      openGroups: string[]
+      focused: string
       rec: boolean
       recWords: string[]
       usage: Usage | null

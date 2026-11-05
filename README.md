@@ -4,7 +4,7 @@ Mods for [Claude Code](https://claude.com/claude-code) by DFA Course Academy.
 
 | Mod | What it does |
 | --- | --- |
-| **studio** | Creator HUD above the prompt: live context, 5-hour and weekly limit bars, session cost and a last-turn summary. **REC** mode masks secrets, emails and paths on screen while you record. **Explain** opens a pane that recaps the last turn. |
+| **studio** | Creator HUD above the prompt: live context, 5-hour and weekly limit bars, session cost and a last-turn summary. **REC** mode masks secrets, emails and paths on screen while you record. **Explain** opens a pane that recaps the last turn. **Commands** opens a cheat sheet of slash commands and shortcuts. |
 | **token-meter** | Tokens and estimated API cost of the last prompt and the whole session in the status line. `/token-cost` prints the breakdown. |
 
 ## Install
@@ -41,7 +41,10 @@ A mod installed at the user scope also loads in the Code tab of the Claude deskt
 | `R` / **REC** button / `/rec` | Toggle REC mode: secrets, API keys, emails and file paths are masked on screen |
 | `/rec hide <text>` · `/rec show <text>` · `/rec list` | Add, remove or list your own words to mask |
 | `E` / **Explain** button / `/explain` | Recap the last turn in the Explain pane |
+| `C` / **Commands** button / `/commands` | Open the cheat sheet: your favorites, the essential built-in commands and shortcuts, and every command your plugins, skills and MCP servers add, grouped by source |
 | `M` / **Minimize** button / `/hud` | Shrink the HUD to one row of numbers, or expand it again. Remembered across sessions. `/hud min` · `/hud max` |
+
+In the Commands pane, Enter (or a click) puts the command in the prompt without sending it, and any text you already typed stays after it. Press `F` or the ☆ next to a command to pin it to Favorites; favorites are remembered across sessions. Group headers open and close with Enter or a click. Built-in commands your Claude Code version does not have are hidden.
 
 REC mode masks what is drawn on screen. It is a recording aid, not a security boundary: always check your recording before publishing.
 

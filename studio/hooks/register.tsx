@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderElement } from 'claude-code'
+import type { EngineInterface, Register, RenderElement, RenderSurface } from 'claude-code'
 
-import type { Explanation, Limit, ToolStep, TurnRecord, Usage } from '../types'
+import type { CommandEntry, Explanation, Limit, ToolStep, TurnRecord, Usage } from '../types'
+import { ESSENTIALS, NAME_MAX, cut, displayName, draftWith, fit, groupOf, nameOfKey, oneLine, regroupOwn, sortGroups } from './commands'
 import { redactDeep, redactText } from './redact'
 
 const rec = atom({ plugin: 'studio', key: 'rec' } as const, false)
@@ -19,12 +20,19 @@ const busy = atom({ plugin: 'studio', key: 'busy' } as const, false)
 const error = atom({ plugin: 'studio', key: 'error' } as const, '')
 const termsLearned = atom({ plugin: 'studio', key: 'termsLearned' } as const, 0)
 const collapsed = atom({ plugin: 'studio', key: 'collapsed' } as const, false)
+const cmds = atom({ plugin: 'studio', key: 'cmds' } as const, [])
+const cmdsListed = atom({ plugin: 'studio', key: 'cmdsListed' } as const, false)
+const favs = atom({ plugin: 'studio', key: 'favs' } as const, [])
+const openGroups = atom({ plugin: 'studio', key: 'openGroups' } as const, [])
+const focused = atom({ plugin: 'studio', key: 'focused' } as const, '')
 
 const PANE = 'studio-explain'
+const CMD_PANE = 'studio-commands'
 const STORE_REC = 'studio.rec'
 const STORE_WORDS = 'studio.recWords'
 const STORE_TERMS = 'studio.terms'
 const STORE_COLLAPSED = 'studio.collapsed'
+const STORE_FAVS = 'studio.favorites'
 
 // ── formatting ────────────────────────────────────────────────────────────
 
@@ -272,6 +280,61 @@ const setCollapsed = async ($: EngineInterface, on: boolean) => {
   await $.store.set(STORE_COLLAPSED, on)
 }
 
+// ── commands cheat sheet ──────────────────────────────────────────────────
+
+const loadCommands = async ($: EngineInterface) => {
+  try {
+    const list = await $.command.list()
+    const entries: CommandEntry[] = regroupOwn(
+      list.map(c => ({
+        name: c.name,
+        description: oneLine(c.description ?? ''),
+        source: c.source,
+        group: groupOf(c.name, c.source, c.plugin),
+      })),
+    )
+    await update($, cmds, () => entries)
+    await update($, cmdsListed, () => true)
+  } catch {
+    await update($, cmdsListed, () => false)
+  }
+}
+
+const openCommands = async ($: EngineInterface) => {
+  await loadCommands($)
+  // A picker: it takes the keys (the arrows walk its rows), Esc closes it, toasts wait behind it.
+  await $.ui.open({ id: CMD_PANE, title: 'Commands', focus: true, closeOnEscape: true, holdToasts: true, rows: 34, columns: 76 })
+}
+
+// Puts `/name ` in the prompt and closes the pane; a draft already typed stays after it.
+// Where the surface keeps its own prompt box, the command goes to the clipboard instead.
+const insertCommand = async ($: EngineInterface, name: string, surface: RenderSurface) => {
+  await $.ui.close({ id: CMD_PANE })
+  const box = await $.prompt.read()
+  const r = await $.prompt.fill(draftWith(name, box.text))
+  if (r.isFilled) return
+  try {
+    await $.ui.copy({ surface, text: `/${name} ` })
+    $.ui.toast(`Copied /${name} - paste it into the prompt`)
+  } catch {
+    $.ui.toast(`Type /${name} in the prompt`)
+  }
+}
+
+// Remembered in the store, so favorites stay pinned in every session.
+const toggleFav = async ($: EngineInterface, name: string) => {
+  if (!name) return
+  let next: string[] = []
+  await update($, favs, xs => {
+    next = xs.includes(name) ? xs.filter(x => x !== name) : [...xs, name]
+    return next
+  })
+  await $.store.set(STORE_FAVS, next)
+}
+
+const toggleGroup = ($: EngineInterface, group: string) =>
+  update($, openGroups, xs => (xs.includes(group) ? xs.filter(x => x !== group) : [...xs, group]))
+
 // ── hooks ─────────────────────────────────────────────────────────────────
 
 export const register: Register = on => {
@@ -282,6 +345,11 @@ export const register: Register = on => {
     await $.command.register({ name: 'rec', description: 'Toggle REC mode (mask secrets on screen). /rec hide <text> · /rec show <text> · /rec list' })
     await $.command.register({ name: 'explain', description: 'Recap the last turn in the Explain pane' })
     await $.command.register({ name: 'hud', description: 'Minimize or expand the studio HUD. /hud min · /hud max' })
+    try {
+      await $.command.register({ name: 'commands', description: 'Open the studio cheat sheet of slash commands and shortcuts' })
+    } catch {}
+    const storedFavs = ((await $.store.get(STORE_FAVS)) as unknown[] | undefined) ?? []
+    await update($, favs, () => storedFavs.filter((x): x is string => typeof x === 'string'))
     const storedCollapsed = (await $.store.get(STORE_COLLAPSED)) === true
     await update($, collapsed, () => storedCollapsed)
     const storedRec = (await $.store.get(STORE_REC)) === true
@@ -408,6 +476,20 @@ export const register: Register = on => {
     return { text: target ? 'REC on.' : 'REC off.' }
   })
 
+  on('command.run', { command: 'commands' }, async $ => {
+    await openCommands($)
+    return { text: 'Commands pane opened.' }
+  })
+
+  // Remember which row of the Commands pane holds the ring, so F stars it.
+  // The Star button itself never takes over, so F acts on the row the ring was on.
+  on('ui.focus', { requestId: CMD_PANE }, async ($, e, next) => {
+    const r = await next(e)
+    if (e.element !== 'star') await update($, focused, () => e.element ?? '')
+    if (e.element) await $.ui.scroll({ to: { key: e.element }, in: CMD_PANE }).catch(() => undefined)
+    return r
+  }).catch(($, e, next) => next(e))
+
   // ── REC: mask what the transcript draws ─────────────────────────────────
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) =>
@@ -476,6 +558,7 @@ export const register: Register = on => {
           onPress={() => setRec($, !isRec)}
         />
         <Button key="explain" hotkey="e" label="✦ Explain" onPress={() => explainLatest($)} />
+        <Button key="commands" hotkey="c" label="⌘ Commands" onPress={() => openCommands($)} />
         <Button
           key="collapse"
           hotkey="m"
@@ -771,6 +854,134 @@ export const register: Register = on => {
           terms learned {learned} · recap cost {tokens(ex.tokens)} new tokens
         </Text>
         {nav}
+      </Box>
+    )
+  })
+
+  // ── Commands pane ───────────────────────────────────────────────────────
+
+  on('ui.render', { component: 'Pane', requestId: CMD_PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const all = await read($, cmds)
+    const isListed = await read($, cmdsListed)
+    const fav = await read($, favs)
+    const open = await read($, openGroups)
+    const foc = await read($, focused)
+    const cols = e.props.bodyColumns
+    const isTerminal = e.surface === 'terminal'
+
+    const byName = new Map(all.map(c => [c.name, c]))
+    // Until the session has listed its commands, show the whole sheet.
+    const has = (name: string) => !isListed || byName.has(name)
+    const essentials = ESSENTIALS.filter(x => !x.cmd || has(x.cmd))
+    const essentialText = new Map(ESSENTIALS.filter(x => x.cmd).map(x => [x.cmd as string, x.text]))
+    const favRows = fav.filter(has).map(name => ({ name, text: essentialText.get(name) ?? byName.get(name)?.description ?? '' }))
+
+    const own = all.filter(c => c.source !== 'builtin')
+    const groups = sortGroups(own.map(c => c.group))
+    const openLabels = own.filter(c => open.includes(c.group)).map(c => displayName(c.group, c.name))
+
+    // One name column for the whole pane; the description takes the rest of the row.
+    const shown = [...favRows.map(r => r.name), ...essentials.map(x => x.cmd ?? x.keys ?? ''), ...openLabels]
+    const nameW = Math.min(NAME_MAX, Math.max(12, ...shown.map(n => n.length + 2)))
+    const descW = Math.max(8, cols - nameW - 6)
+
+    const heading = (icon: string, label: string, color: string, aside?: string) => (
+      <Box marginTop={1} flexDirection="row">
+        <Text color={color} bold>
+          {icon} {label}
+        </Text>
+        {aside ? <Text dimColor>{`  ${aside}`}</Text> : null}
+      </Box>
+    )
+
+    const row = (section: string, name: string, text: string, label = name) => {
+      const isFav = fav.includes(name)
+      return (
+        <Box flexDirection="row">
+          <Box width={nameW} flexShrink={0}>
+            <Button key={`run|${section}|${name}`} label={cut(`/${label}`, nameW - 1)} plain onPress={p => void insertCommand($, name, p.surface)} />
+          </Box>
+          <Text dimColor wrap="truncate-end">
+            {cut(text, descW)}
+          </Text>
+          <Text> </Text>
+          <Button key={`fav|${section}|${name}`} plain dimColor={!isFav} label={isFav ? '★' : '☆'} onPress={() => void toggleFav($, name)} />
+        </Box>
+      )
+    }
+
+    const essentialGroups = [...new Set(essentials.map(x => x.group))]
+    const focusedName = nameOfKey(foc)
+
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="row" justifyContent="space-between">
+          <Text color="claude" bold>
+            ⌘ COMMANDS
+          </Text>
+          <Text dimColor>{isListed ? `${all.length} available` : ''}</Text>
+        </Box>
+        <Text dimColor wrap="truncate-end">
+          {isTerminal ? '↑↓ move · Enter puts it in the prompt · F stars · Esc closes' : 'Click a command to put it in the prompt · ☆ pins it to the top'}
+        </Text>
+
+        {heading('★', 'FAVORITES', 'warning')}
+        {favRows.length ? (
+          favRows.map(r => row('f', r.name, r.text))
+        ) : (
+          <Text dimColor>{isTerminal ? 'Nothing pinned yet. Press F on a command, or Enter on its ☆.' : 'Nothing pinned yet. Click ☆ next to a command.'}</Text>
+        )}
+
+        {heading('◆', 'ESSENTIALS', 'suggestion')}
+        {essentialGroups.map(g => (
+          <Box flexDirection="column" marginTop={1}>
+            <Text dimColor bold>
+              {g.toUpperCase()}
+            </Text>
+            {essentials
+              .filter(x => x.group === g)
+              .map(x =>
+                x.cmd ? (
+                  row('e', x.cmd, x.text)
+                ) : (
+                  <Box flexDirection="row">
+                    <Text color="permission">{fit(x.keys ?? '', nameW)}</Text>
+                    <Text dimColor>{cut(x.text, descW)}</Text>
+                  </Box>
+                ),
+              )}
+          </Box>
+        ))}
+
+        {heading('▸', 'YOUR COMMANDS', 'success', isListed ? `${own.length} from your plugins, skills and MCP` : '')}
+        {!isListed ? <Text dimColor>Couldn’t read the commands of this session.</Text> : null}
+        {isListed && !own.length ? <Text dimColor>No plugin, skill or MCP commands installed yet.</Text> : null}
+        {groups.map(g => {
+          const items = own.filter(c => c.group === g).sort((a, b) => a.name.localeCompare(b.name))
+          const isOpen = open.includes(g)
+          return (
+            <Box flexDirection="column">
+              <Button key={`grp|${g}`} label={`${isOpen ? '▾' : '▸'} ${g} (${items.length})`} plain onPress={() => void toggleGroup($, g)} />
+              {isOpen ? (
+                <Box flexDirection="column" paddingLeft={2}>
+                  {items.map(c => row('y', c.name, c.description, displayName(g, c.name)))}
+                </Box>
+              ) : null}
+            </Box>
+          )
+        })}
+
+        <Box flexDirection="row" gap={1} marginTop={1} flexWrap="wrap">
+          <Button
+            key="star"
+            hotkey="f"
+            label={focusedName && fav.includes(focusedName) ? '☆ Unstar' : '★ Star'}
+            dimColor={!focusedName}
+            onPress={() => void read($, focused).then(k => toggleFav($, nameOfKey(k)))}
+          />
+          <Button key="close" hotkey="x" label="Close" role="dismiss" onPress={() => void $.ui.close({ id: CMD_PANE })} />
+        </Box>
       </Box>
     )
   })
